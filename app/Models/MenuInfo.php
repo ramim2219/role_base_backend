@@ -74,10 +74,10 @@ class MenuInfo extends Model
     }
 
     /** Allocations pointing at this menu */
-    public function allocations(): HasMany
-    {
-        return $this->hasMany(MenuAllocation::class, 'menu_info_id');
-    }
+    // public function allocations(): HasMany
+    // {
+    //     return $this->hasMany(MenuAllocation::class, 'menu_info_id');
+    // }
 
     // ─────────────────────────────────────────────────────
     // Scopes

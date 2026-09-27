@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\MenuInfo;
-use App\Models\MenuAllocation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -66,27 +65,6 @@ class MenuController extends Controller
     }
 
     /**
-     * Convert incoming user/type ids (0 or null) → DB value.
-     * DB stores NULL when the scope isn't used.
-     */
-    private function toDbScopeId($id): ?int
-    {
-        $v = (int) ($id ?? 0);
-        return $v === 0 ? null : $v;
-    }
-
-    /**
-     * Determine whether the given user is an admin.
-     * 🔧 ADJUST to match your schema.
-     */
-    private function isAdmin($user): bool
-    {
-        if (!$user) return false;
-        // Default: user_type_id = 1 → admin
-        return (int) ($user->user_type_id ?? 0) === 1;
-    }
-
-    /**
      * Build nested menu tree from a flat collection.
      * Output: { id, menu, parent_id: 0, submenu: [], access: [] }
      */
@@ -128,37 +106,7 @@ class MenuController extends Controller
     }
 
     /**
-     * Walk up the tree and include every ancestor for the given ids.
-     * Ensures nested tree renders correctly when only some children are assigned.
-     */
-    private function includeAncestors(array $ids): array
-    {
-        if (empty($ids)) return [];
-
-        $result = $ids;
-        $queue  = $ids;
-
-        while (!empty($queue)) {
-            $parents = MenuInfo::whereIn('id', array_unique($queue))
-                ->whereNotNull('parent_id')
-                ->pluck('parent_id')
-                ->unique()
-                ->toArray();
-
-            $queue = [];
-            foreach ($parents as $pid) {
-                if (!in_array($pid, $result, true)) {
-                    $result[] = $pid;
-                    $queue[]  = $pid;
-                }
-            }
-        }
-
-        return array_values(array_unique($result));
-    }
-
-    /**
-     * Recursive delete — deletes menu, all descendants, and all allocations.
+     * Recursive delete — deletes menu and all descendants.
      * Works whether or not FK cascade is enabled.
      */
     private function deleteMenuRecursive(int $id): void
@@ -169,32 +117,8 @@ class MenuController extends Controller
             $this->deleteMenuRecursive((int) $childId);
         }
 
-        // 2. Remove allocations
-        MenuAllocation::where('menu_info_id', $id)->delete();
-
-        // 3. Delete the menu
+        // 2. Delete the menu
         MenuInfo::where('id', $id)->delete();
-    }
-
-    /**
-     * Check whether the user has access to a specific menu.
-     * Admins always have access.
-     */
-    private function userHasAccessToMenu(int $menuId, $user): bool
-    {
-        if (!$user) return false;
-        if ($this->isAdmin($user)) return true;
-
-        $userId = (int) $user->id;
-        $typeId = (int) ($user->user_type_id ?? 0);
-
-        return MenuAllocation::where('menu_info_id', $menuId)
-            ->where('status', 'active')
-            ->where(function ($q) use ($userId, $typeId) {
-                if ($userId) $q->orWhere('user_info_id', $userId);
-                if ($typeId) $q->orWhere('user_type_id', $typeId);
-            })
-            ->exists();
     }
 
     /**
@@ -349,7 +273,7 @@ class MenuController extends Controller
     // ═════════════════════════════════════════════════════
     // 3. DELETE MENU
     // DELETE /api/Menu/delete_menu?menu_id=X
-    // Cascades to children, access items, and allocations.
+    // Cascades to children.
     // ═════════════════════════════════════════════════════
     public function deleteMenu(Request $request)
     {
@@ -377,14 +301,6 @@ class MenuController extends Controller
 
     // ═════════════════════════════════════════════════════
     // 4. VIEW ALL MENUS
-    // GET /api/Menu/get_menus_by_software
-    //
-    //   Admin  → all menus (unless ?userinfo_id / ?usertype_id given)
-    //   User   → only assigned menus (auto-filter by their id + type)
-    //   ?flat=1 → flat list instead of nested tree
-    // ═════════════════════════════════════════════════════
-    // ═════════════════════════════════════════════════════
-    // 4. VIEW ALL MENUS
     // GET /api/Menu/get_all_menus
     //
     // Returns every menu as a nested tree. No filtering.
@@ -408,11 +324,10 @@ class MenuController extends Controller
     }
 
     // ═════════════════════════════════════════════════════
-    // 5. VIEW MENUS BY ID (with access guard)
+    // 5. VIEW MENUS BY ID
     // GET /api/Menu/edit_menu?menu_id=X
     //
     // Returns: [ { menu } ] — array with 1 element
-    // Access: only admins or users with this menu assigned
     // ═════════════════════════════════════════════════════
     public function viewMenusById(Request $request)
     {
@@ -427,133 +342,7 @@ class MenuController extends Controller
                 return $this->fail('Menu not found.', self::VALIDATION_ERR);
             }
 
-            $user = auth()->user();
-
-            // Guard: only admins or assigned users may view
-            if (!$this->userHasAccessToMenu($id, $user)) {
-                return $this->fail(
-                    'You do not have access to this menu.',
-                    self::VALIDATION_ERR
-                );
-            }
-
             return $this->ok('Menu fetched successfully.', [$menu->toApiArray()]);
-        } catch (\Throwable $e) {
-            return $this->fail($e->getMessage());
-        }
-    }
-
-    // ═════════════════════════════════════════════════════
-    // 6. ASSIGN MENU (menuAllocation)
-    // POST /api/Menu/typewise_menu_allocation
-    //
-    // Body:
-    //   tbl_menuinfo_id  (required)
-    //   tbl_userinfo_id  (nullable) — set this OR tbl_type_id
-    //   tbl_type_id      (nullable) — set this OR tbl_userinfo_id
-    //   priority         (optional)
-    // ═════════════════════════════════════════════════════
-    public function assignMenu(Request $request)
-    {
-        try {
-            $v = Validator::make($request->all(), [
-                'tbl_menuinfo_id' => 'required|integer|exists:menu_infos,id',
-                'tbl_userinfo_id' => 'nullable|integer|min:0',
-                'tbl_type_id'     => 'nullable|integer|min:0',
-                'priority'        => 'nullable|integer|min:1',
-            ]);
-
-            if ($v->fails()) {
-                return $this->fail($v->errors()->first(), self::VALIDATION_ERR);
-            }
-
-            $menuId   = (int) $request->input('tbl_menuinfo_id');
-            $userId   = $this->toDbScopeId($request->input('tbl_userinfo_id', 0));
-            $typeId   = $this->toDbScopeId($request->input('tbl_type_id', 0));
-            $priority = (int) $request->input('priority', 1);
-
-            if (!$userId && !$typeId) {
-                return $this->fail(
-                    'Either a user or a type must be provided.',
-                    self::VALIDATION_ERR
-                );
-            }
-            if ($userId && $typeId) {
-                return $this->fail(
-                    'Provide either user or type, not both.',
-                    self::VALIDATION_ERR
-                );
-            }
-
-            // Check existing (active or inactive)
-            $existing = MenuAllocation::where('menu_info_id', $menuId)
-                ->where('user_info_id', $userId)
-                ->where('user_type_id', $typeId)
-                ->first();
-
-            if ($existing) {
-                if ($existing->status === 'active') {
-                    return $this->fail(
-                        'This menu is already assigned.',
-                        self::DUPLICATE
-                    );
-                }
-
-                $existing->update([
-                    'status'   => 'active',
-                    'priority' => $priority,
-                ]);
-
-                return $this->ok('Menu assignment reactivated.', [
-                    'id' => $existing->id,
-                ]);
-            }
-
-            $alloc = MenuAllocation::create([
-                'menu_info_id' => $menuId,
-                'user_info_id' => $userId,
-                'user_type_id' => $typeId,
-                'priority'     => $priority,
-                'status'       => 'active',
-                'created_by'   => auth()->id(),
-            ]);
-
-            return $this->ok('Menu assigned successfully.', ['id' => $alloc->id]);
-        } catch (\Throwable $e) {
-            return $this->fail($e->getMessage());
-        }
-    }
-
-    // ═════════════════════════════════════════════════════
-    // 7. UNASSIGN MENU
-    // DELETE /api/Menu/remove_menu_allocation
-    // ═════════════════════════════════════════════════════
-    public function unassignMenu(Request $request)
-    {
-        try {
-            $id     = (int) ($request->input('Id') ?? $request->input('id', 0));
-            $menuId = (int) $request->input('tbl_menuinfo_id', 0);
-            $userId = $this->toDbScopeId($request->input('tbl_userinfo_id', 0));
-            $typeId = $this->toDbScopeId($request->input('tbl_type_id', 0));
-
-            if (!$id || !$menuId) {
-                return $this->fail(
-                    'Allocation id and menu id are required.',
-                    self::VALIDATION_ERR
-                );
-            }
-
-            $affected = MenuAllocation::where('id', $id)
-                ->where('menu_info_id', $menuId)
-                ->where('user_info_id', $userId)
-                ->where('user_type_id', $typeId)
-                ->update(['status' => 'inactive']);
-
-            if (!$affected) {
-                return $this->fail('Allocation not found.', self::VALIDATION_ERR);
-            }
-
-            return $this->ok('Menu unassigned successfully.');
         } catch (\Throwable $e) {
             return $this->fail($e->getMessage());
         }

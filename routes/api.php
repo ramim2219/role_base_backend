@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CompanyTypeController;
+use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\UserTypeController;
 
 // Public
 Route::prefix('auth')->group(function () {
@@ -43,5 +45,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post  ('/save',      [CompanyTypeController::class, 'save']);
         Route::put   ('/update',    [CompanyTypeController::class, 'update']);
         Route::delete('/delete',    [CompanyTypeController::class, 'delete']);
+    });
+
+    Route::prefix('Company')->group(function () {
+        Route::get   ('/get_all',   [CompanyController::class, 'getAll']);
+        Route::get   ('/get_by_id', [CompanyController::class, 'getById']);
+        Route::post  ('/save',      [CompanyController::class, 'save']);
+        Route::put   ('/update',    [CompanyController::class, 'update']);
+        Route::delete('/delete',    [CompanyController::class, 'delete']);
+    });
+
+    Route::prefix('UserType')->group(function () {
+        Route::get   ('/get_all',   [UserTypeController::class, 'getAll']);
+        Route::get   ('/get_by_id', [UserTypeController::class, 'getById']);
+        Route::post  ('/save',      [UserTypeController::class, 'save']);
+        Route::put   ('/update',    [UserTypeController::class, 'update']);
+        Route::delete('/delete',    [UserTypeController::class, 'delete']);
     });
 });

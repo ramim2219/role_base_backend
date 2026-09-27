@@ -24,12 +24,14 @@ class Company extends Model
     ];
 
     protected $casts = [
-        'status' => 'integer',
+        'company_type_id' => 'integer',
+        'status'          => 'integer',
+        'created_by'      => 'integer',
     ];
 
-    public function type(): BelongsTo
+    public function companyType(): BelongsTo
     {
-        return $this->belongsTo(CompanyType::class, 'company_type_id');
+        return $this->belongsTo(CompanyType::class);
     }
 
     public function creator(): BelongsTo
@@ -42,13 +44,24 @@ class Company extends Model
         return $this->hasMany(User::class);
     }
 
-    public function userTypes(): HasMany
+    public function toApiArray(): array
     {
-        return $this->hasMany(UserType::class);
-    }
-
-    public function domains(): HasMany
-    {
-        return $this->hasMany(CompanyDomain::class);
+        return [
+            'id'              => $this->id,
+            'name'            => $this->name,
+            'logo'            => $this->logo,
+            'company_type_id' => $this->company_type_id,
+            'company_type'    => $this->relationLoaded('companyType') && $this->companyType
+                ? ['id' => $this->companyType->id, 'name' => $this->companyType->name]
+                : null,
+            'slug'            => $this->slug,
+            'status'          => $this->status,
+            'address'         => $this->address,
+            'contact'         => $this->contact,
+            'email'           => $this->email,
+            'created_by'      => $this->created_by,
+            'created_at'      => $this->created_at,
+            'updated_at'      => $this->updated_at,
+        ];
     }
 }
