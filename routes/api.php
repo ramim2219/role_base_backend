@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CompanyTypeController;
 use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\MenuAllocationController;
 use App\Http\Controllers\Api\UserTypeController;
 
 // Public
@@ -28,8 +29,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/delete_menu',              [MenuController::class, 'deleteMenu']);
         Route::get   ('/get_all_menus',            [MenuController::class, 'viewAllMenu']);
         Route::get   ('/get_menus_by_id',          [MenuController::class, 'viewMenusById']);
-        Route::post  ('/typewise_menu_allocation', [MenuController::class, 'assignMenu']);
-        Route::delete('/remove_menu_allocation',   [MenuController::class, 'unassignMenu']);
+    });
+    Route::prefix('MenuAllocation')->group(function () {
+        Route::post  ('/typewise_menu_allocation', [MenuAllocationController::class, 'assignMenu']);
+        Route::delete('/remove_menu_allocation',   [MenuAllocationController::class, 'unassignMenu']);
+        Route::get   ('/get_all',                  [MenuAllocationController::class, 'getAll']);
     });
 
     Route::prefix('User')->group(function () {
