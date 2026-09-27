@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\CompanyTypeController;
 
 // Public
 Route::prefix('auth')->group(function () {
@@ -34,5 +35,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get   ('/get_my_users',   [UserController::class, 'getMyUsers']);
         Route::put   ('/update_user',    [UserController::class, 'updateUser']);
         Route::delete('/delete_user',    [UserController::class, 'deleteUser']);
+    });
+
+    Route::prefix('CompanyType')->group(function () {
+        Route::get   ('/get_all',   [CompanyTypeController::class, 'getAll']);
+        Route::get   ('/get_by_id', [CompanyTypeController::class, 'getById']);
+        Route::post  ('/save',      [CompanyTypeController::class, 'save']);
+        Route::put   ('/update',    [CompanyTypeController::class, 'update']);
+        Route::delete('/delete',    [CompanyTypeController::class, 'delete']);
     });
 });
