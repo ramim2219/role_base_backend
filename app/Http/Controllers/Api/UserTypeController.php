@@ -279,4 +279,55 @@ class UserTypeController extends Controller
             return $this->fail($e->getMessage());
         }
     }
+    // ═════════════════════════════════════════════════════
+    // GET USER TYPES BY CREATOR
+    // GET /api/UserType/get_user_type_by_createdby?created_by=X
+    //
+    // Returns every user type whose created_by = X.
+    //
+    // Rules:
+    //   • Super admin can query any creator id.
+    //   • Non-super-admins can only query their own id
+    //     (created_by must equal their own user id).
+    // ═════════════════════════════════════════════════════
+    public function getByCreatedBy(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+
+            $createdBy = (int) (
+                $request->query('created_by')
+                ?? $authUser->id
+                ?? 0
+            );
+
+            if (!$createdBy) {
+                return $this->fail(
+                    'created_by is required.',
+                    self::VALIDATION_ERR
+                );
+            }
+
+            // Non-super-admins can only see their own types
+            if (
+                !$authUser->hasRole('super_admin') &&
+                $createdBy !== (int) $authUser->id
+            ) {
+                return $this->fail(
+                    'You can only view user types you created.',
+                    self::FORBIDDEN
+                );
+            }
+
+            $types = UserType::with('company')
+                ->where('created_by', $createdBy)
+                ->orderBy('name')
+                ->get()
+                ->map(fn ($t) => $t->toApiArray());
+
+            return $this->ok('User types fetched successfully.', $types);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }
 }

@@ -14,6 +14,9 @@ Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
 });
 
+// routes/api.php — outside auth:sanctum
+Route::get('public/user-types', [UserTypeController::class, 'getAll']);
+
 // Protected
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -34,13 +37,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post  ('/typewise_menu_allocation', [MenuAllocationController::class, 'assignMenu']);
         Route::delete('/remove_menu_allocation',   [MenuAllocationController::class, 'unassignMenu']);
         Route::get   ('/get_all',                  [MenuAllocationController::class, 'getAll']);
+        Route::get   ('/get_assigned_menus',       [MenuAllocationController::class, 'getAssignedMenus']);
     });
 
     Route::prefix('User')->group(function () {
-        Route::get   ('/get_user_by_id', [UserController::class, 'getUserById']);
-        Route::get   ('/get_my_users',   [UserController::class, 'getMyUsers']);
-        Route::put   ('/update_user',    [UserController::class, 'updateUser']);
-        Route::delete('/delete_user',    [UserController::class, 'deleteUser']);
+        Route::get   ('/get_user_by_id',          [UserController::class, 'getUserById']);
+        Route::get   ('/get_my_users',            [UserController::class, 'getMyUsers']);
+        Route::post  ('/save_user',               [UserController::class, 'saveUser']);
+        Route::put   ('/update_user',             [UserController::class, 'updateUser']);
+        Route::delete('/delete_user',             [UserController::class, 'deleteUser']);
+        Route::get   ('/get_users_by_my_types',   [UserController::class, 'getUsersByMyUserTypes']);
+        Route::get   ('/get_grouped_by_my_types', [UserController::class, 'getGroupedByMyUserTypes']);
     });
 
     Route::prefix('CompanyType')->group(function () {
@@ -49,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post  ('/save',      [CompanyTypeController::class, 'save']);
         Route::put   ('/update',    [CompanyTypeController::class, 'update']);
         Route::delete('/delete',    [CompanyTypeController::class, 'delete']);
+        Route::get('/get_company_type_by_createdby', [CompanyTypeController::class, 'getByCreatedBy']);
     });
 
     Route::prefix('Company')->group(function () {
@@ -57,13 +65,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post  ('/save',      [CompanyController::class, 'save']);
         Route::put   ('/update',    [CompanyController::class, 'update']);
         Route::delete('/delete',    [CompanyController::class, 'delete']);
+        Route::get('/get_company_by_createdby', [CompanyController::class, 'getByCreatedBy']);
     });
-
     Route::prefix('UserType')->group(function () {
         Route::get   ('/get_all',   [UserTypeController::class, 'getAll']);
         Route::get   ('/get_by_id', [UserTypeController::class, 'getById']);
         Route::post  ('/save',      [UserTypeController::class, 'save']);
         Route::put   ('/update',    [UserTypeController::class, 'update']);
         Route::delete('/delete',    [UserTypeController::class, 'delete']);
+        Route::get   ('/get_user_type_by_createdby',  [UserTypeController::class, 'getByCreatedBy']);
     });
 });

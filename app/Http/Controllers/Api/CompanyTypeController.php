@@ -192,4 +192,46 @@ class CompanyTypeController extends Controller
             return $this->fail($e->getMessage());
         }
     }
+    // ═════════════════════════════════════════════════════
+    // GET BY CREATOR
+    // GET /api/CompanyType/get_company_type_by_createdby
+    //   ?created_by=X  → types created by user X
+    //   (omitted)      → types created by the current user
+    //
+    // Rules:
+    //   • Super admin can query any creator id.
+    //   • Non-super-admins can only query their own id.
+    // ═════════════════════════════════════════════════════
+    public function getByCreatedBy(Request $request)
+    {
+        try {
+            $authUser     = $request->user();
+            $isSuperAdmin = $authUser->hasRole('super_admin');
+
+            $createdBy = (int) (
+                $request->query('created_by')
+                ?: $authUser->id
+            );
+
+            if (!$createdBy) {
+                return $this->fail('created_by is required.', self::VALIDATION_ERR);
+            }
+
+            if (!$isSuperAdmin && $createdBy !== (int) $authUser->id) {
+                return $this->fail(
+                    'You can only view company types you created.',
+                    self::FORBIDDEN
+                );
+            }
+
+            $types = CompanyType::where('created_by', $createdBy)
+                ->orderBy('name')
+                ->get()
+                ->map(fn ($t) => $t->toApiArray());
+
+            return $this->ok('Company types fetched successfully.', $types);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }
 }

@@ -355,4 +355,49 @@ class CompanyController extends Controller
             return $this->fail($e->getMessage());
         }
     }
+    // ═════════════════════════════════════════════════════
+    // GET COMPANIES BY CREATOR
+    // GET /api/Company/get_company_by_createdby?created_by=X
+    //
+    // Returns every company whose created_by = X.
+    //
+    // Rules:
+    //   • Super admin can query any creator id.
+    //   • Non-super-admins can only query their own id.
+    //   • If created_by is omitted, defaults to the caller's own id.
+    // ═════════════════════════════════════════════════════
+    public function getByCreatedBy(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+            $isSuperAdmin = $authUser->hasRole('super_admin');
+
+            $createdBy = (int) (
+                $request->query('created_by')
+                ?: $authUser->id
+            );
+
+            if (!$createdBy) {
+                return $this->fail('created_by is required.', self::VALIDATION_ERR);
+            }
+
+            // Non-super-admins can only see their own companies
+            if (!$isSuperAdmin && $createdBy !== (int) $authUser->id) {
+                return $this->fail(
+                    'You can only view companies you created.',
+                    self::FORBIDDEN
+                );
+            }
+
+            $companies = Company::with('companyType')
+                ->where('created_by', $createdBy)
+                ->orderBy('name')
+                ->get()
+                ->map(fn ($c) => $c->toApiArray());
+
+            return $this->ok('Companies fetched successfully.', $companies);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }
 }
