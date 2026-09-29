@@ -423,4 +423,180 @@ class MenuAllocationController extends Controller
             return $this->fail($e->getMessage());
         }
     }
+        // ═════════════════════════════════════════════════════
+    // 5. GET MY MENUS (for the authenticated user)
+    // GET /api/MenuAllocation/get_my_menus
+    //
+    // No query params needed — everything is derived from
+    // the bearer token / authenticated user.
+    //
+    // Rules:
+    //   • Menus assigned directly to the user take precedence
+    //     over menus assigned to the user's type.
+    //   • Every ancestor of an assigned menu is included so
+    //     the nested tree renders correctly.
+    //   • Only active allocations are considered.
+    // ═════════════════════════════════════════════════════
+    public function getMyMenus(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+
+            if (!$authUser) {
+                return $this->fail('Unauthenticated.', self::FORBIDDEN);
+            }
+
+            $userId = (int) $authUser->id;
+            $typeId = (int) ($authUser->user_type_id ?? 0);
+
+            // Active allocations for this user OR this user type
+            $allocations = MenuAllocation::where('status', 'active')
+                ->where(function ($q) use ($userId, $typeId) {
+                    $q->where('user_info_id', $userId);
+
+                    if ($typeId) {
+                        $q->orWhere('user_type_id', $typeId);
+                    }
+                })
+                ->orderBy('priority')
+                ->orderBy('menu_info_id')
+                ->get();
+
+            if ($allocations->isEmpty()) {
+                return $this->ok('No menus assigned.', []);
+            }
+
+            // Direct user assignments win over type-wide ones.
+            // Start with user-specific allocations, then add
+            // type-scoped ones that don't duplicate.
+            $userSpecific = $allocations
+                ->where('user_info_id', $userId)
+                ->pluck('menu_info_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->toArray();
+
+            $typeScoped = $typeId
+                ? $allocations
+                    ->where('user_type_id', $typeId)
+                    ->whereNull('user_info_id') // pure type-level only
+                    ->pluck('menu_info_id')
+                    ->map(fn ($v) => (int) $v)
+                    ->unique()
+                    ->values()
+                    ->toArray()
+                : [];
+
+            $menuIds = array_values(array_unique(array_merge($userSpecific, $typeScoped)));
+
+            if (empty($menuIds)) {
+                return $this->ok('No menus assigned.', []);
+            }
+
+            // Include every ancestor so the nested tree renders correctly
+            $menuIds = $this->includeAncestors($menuIds);
+
+            $rows = MenuInfo::whereIn('id', $menuIds)
+                ->orderByRaw('COALESCE(parent_id, 0) ASC')
+                ->orderBy('menu_order')
+                ->orderBy('id')
+                ->get();
+
+            $tree = $this->buildMenuTree($rows);
+
+            return $this->ok('My menus fetched successfully.', $tree);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }
+        // ═════════════════════════════════════════════════════
+    // 6. GET ASSIGNABLE MENUS (for delegated admins)
+    // GET /api/MenuAllocation/get_assignable_menus
+    //
+    // Returns the menus the authenticated user can delegate
+    // to users / user types they created.
+    //
+    // Rules:
+    //   • Super admins get every menu.
+    //   • Regular users get exactly the menus assigned to them
+    //     (direct + type-scoped + ancestors), same as getMyMenus.
+    // ═════════════════════════════════════════════════════
+    public function getAssignableMenus(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+
+            if (!$authUser) {
+                return $this->fail('Unauthenticated.', self::FORBIDDEN);
+            }
+
+            // Super admins can delegate every menu
+            if ($authUser->hasRole('super_admin')) {
+                $rows = MenuInfo::orderByRaw('COALESCE(parent_id, 0) ASC')
+                    ->orderBy('menu_order')
+                    ->orderBy('id')
+                    ->get();
+
+                $tree = $this->buildMenuTree($rows);
+                return $this->ok('Assignable menus fetched successfully.', $tree);
+            }
+
+            // Regular users: reuse the same logic as getMyMenus
+            $userId = (int) $authUser->id;
+            $typeId = (int) ($authUser->user_type_id ?? 0);
+
+            $allocations = MenuAllocation::where('status', 'active')
+                ->where(function ($q) use ($userId, $typeId) {
+                    $q->where('user_info_id', $userId);
+                    if ($typeId) {
+                        $q->orWhere('user_type_id', $typeId);
+                    }
+                })
+                ->get();
+
+            if ($allocations->isEmpty()) {
+                return $this->ok('No menus assigned.', []);
+            }
+
+            $userSpecific = $allocations
+                ->where('user_info_id', $userId)
+                ->pluck('menu_info_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->toArray();
+
+            $typeScoped = $typeId
+                ? $allocations
+                    ->where('user_type_id', $typeId)
+                    ->whereNull('user_info_id')
+                    ->pluck('menu_info_id')
+                    ->map(fn ($v) => (int) $v)
+                    ->unique()
+                    ->values()
+                    ->toArray()
+                : [];
+
+            $menuIds = array_values(array_unique(array_merge($userSpecific, $typeScoped)));
+
+            if (empty($menuIds)) {
+                return $this->ok('No menus assigned.', []);
+            }
+
+            $menuIds = $this->includeAncestors($menuIds);
+
+            $rows = MenuInfo::whereIn('id', $menuIds)
+                ->orderByRaw('COALESCE(parent_id, 0) ASC')
+                ->orderBy('menu_order')
+                ->orderBy('id')
+                ->get();
+
+            $tree = $this->buildMenuTree($rows);
+
+            return $this->ok('Assignable menus fetched successfully.', $tree);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }
 }

@@ -38,6 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/remove_menu_allocation',   [MenuAllocationController::class, 'unassignMenu']);
         Route::get   ('/get_all',                  [MenuAllocationController::class, 'getAll']);
         Route::get   ('/get_assigned_menus',       [MenuAllocationController::class, 'getAssignedMenus']);
+        Route::get('/get_my_menus', [MenuAllocationController::class, 'getMyMenus']);
+        Route::get('/get_assignable_menus', [MenuAllocationController::class, 'getAssignableMenus']);
     });
 
     Route::prefix('User')->group(function () {
