@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CompanyTypeController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\MenuAllocationController;
 use App\Http\Controllers\Api\UserTypeController;
+use App\Http\Controllers\Api\UserDetailController;
 
 // Public
 Route::prefix('auth')->group(function () {
@@ -76,5 +77,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put   ('/update',    [UserTypeController::class, 'update']);
         Route::delete('/delete',    [UserTypeController::class, 'delete']);
         Route::get   ('/get_user_type_by_createdby',  [UserTypeController::class, 'getByCreatedBy']);
+    });
+
+    Route::prefix('UserDetail')->group(function () {
+        Route::get('/get_userDetails_by_userid',          [UserDetailController::class, 'getByUserId']);
+        Route::get('/get_userDetails_by_userid_creator',  [UserDetailController::class, 'getByUserIdCreator']);
+        Route::get('/get_all_userDetails',                [UserDetailController::class, 'getAll']);
+        Route::put('/update_userDetails',                 [UserDetailController::class, 'update']);
+        Route::delete('/delete_userDetails',              [UserDetailController::class, 'delete']);
+        Route::post('/save_userDetails', [UserDetailController::class, 'save']);
     });
 });
