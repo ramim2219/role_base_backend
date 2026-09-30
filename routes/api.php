@@ -80,11 +80,11 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('UserDetail')->group(function () {
-        Route::get('/get_userDetails_by_userid',          [UserDetailController::class, 'getByUserId']);
-        Route::get('/get_userDetails_by_userid_creator',  [UserDetailController::class, 'getByUserIdCreator']);
-        Route::get('/get_all_userDetails',                [UserDetailController::class, 'getAll']);
-        Route::put('/update_userDetails',                 [UserDetailController::class, 'update']);
-        Route::delete('/delete_userDetails',              [UserDetailController::class, 'delete']);
-        Route::post('/save_userDetails', [UserDetailController::class, 'save']);
+        Route::get   ('/get_userDetails_by_userid',         [UserDetailController::class, 'getByUserId']);
+        Route::get   ('/get_userDetails_by_userid_creator', [UserDetailController::class, 'getByUserIdCreator']);
+        Route::get   ('/get_all_userDetails',               [UserDetailController::class, 'getAll']);
+        Route::match (['put', 'post'], '/update_userDetails', [UserDetailController::class, 'update']);
+        Route::delete('/delete_userDetails',                [UserDetailController::class, 'delete']);
+        Route::post  ('/save_userDetails',                  [UserDetailController::class, 'save']);
     });
 });

@@ -37,14 +37,29 @@ class UserDetailController extends Controller
         ]);
     }
 
+    // ─── Ownership helpers ───────────────────────────────
+    /**
+     * A caller can manage a detail if:
+     *   • they are a super admin, OR
+     *   • the detail belongs to themselves, OR
+     *   • they created the underlying user
+     */
+    private function canManage($authUser, UserDetail $detail): bool
+    {
+        if (!$authUser) return false;
+        if ($authUser->hasRole('super_admin')) return true;
+        if ((int) $authUser->id === (int) $detail->user_id) return true;
+
+        return User::where('id', $detail->user_id)
+            ->where('created_by', $authUser->id)
+            ->exists();
+    }
+
     // ─── Serializer ──────────────────────────────────────
     private function toApiArray(UserDetail $detail): array
     {
-        $imageUrl = null;
-        if ($detail->image) {
-            // Storage::url() → "/storage/..." (relative). Frontend prepends base URL.
-            $imageUrl = Storage::url($detail->image);
-        }
+        // asset() prepends APP_URL from .env, giving an absolute URL
+        $imageUrl = $detail->image ? asset('storage/' . $detail->image) : null;
 
         return [
             'id'                         => $detail->id,
@@ -74,7 +89,6 @@ class UserDetailController extends Controller
             'emergency_contact_address'  => $detail->emergency_contact_address,
             'created_by'                 => $detail->created_by,
 
-            // Light user info (safe fields only)
             'user' => $detail->relationLoaded('user') && $detail->user ? [
                 'id'    => $detail->user->id,
                 'name'  => $detail->user->name,
@@ -84,8 +98,7 @@ class UserDetailController extends Controller
     }
 
     // ═════════════════════════════════════════════════════
-    // 1. GET USER DETAILS BY USER ID
-    // GET /api/UserDetail/get_userDetails_by_userid?user_id=X
+    // 1. GET BY USER ID
     // ═════════════════════════════════════════════════════
     public function getByUserId(Request $request)
     {
@@ -96,9 +109,7 @@ class UserDetailController extends Controller
                 return $this->fail('user_id is required.', self::VALIDATION_ERR);
             }
 
-            $detail = UserDetail::with('user')
-                ->where('user_id', $userId)
-                ->first();
+            $detail = UserDetail::with('user')->where('user_id', $userId)->first();
 
             if (!$detail) {
                 return $this->fail('User details not found.', self::NOT_FOUND);
@@ -111,11 +122,7 @@ class UserDetailController extends Controller
     }
 
     // ═════════════════════════════════════════════════════
-    // 2. GET USER DETAILS BY USER ID (creator-scoped)
-    // GET /api/UserDetail/get_userDetails_by_userid_creator?user_id=X
-    //
-    // Returns the user detail only if the caller created that user.
-    // Super admins bypass the check.
+    // 2. GET BY USER ID (creator-scoped)
     // ═════════════════════════════════════════════════════
     public function getByUserIdCreator(Request $request)
     {
@@ -127,23 +134,22 @@ class UserDetailController extends Controller
                 return $this->fail('user_id is required.', self::VALIDATION_ERR);
             }
 
-            // Ownership check — unless super admin
+            // Allow self, or a user the caller created, or super admin
             if (!$authUser->hasRole('super_admin')) {
-                $owns = User::where('id', $userId)
-                    ->where('created_by', $authUser->id)
-                    ->exists();
+                $allowed = (int) $authUser->id === $userId
+                    || User::where('id', $userId)
+                        ->where('created_by', $authUser->id)
+                        ->exists();
 
-                if (!$owns) {
+                if (!$allowed) {
                     return $this->fail(
-                        'You can only view details for users you created.',
+                        'You can only view your own details or those of users you created.',
                         self::FORBIDDEN
                     );
                 }
             }
 
-            $detail = UserDetail::with('user')
-                ->where('user_id', $userId)
-                ->first();
+            $detail = UserDetail::with('user')->where('user_id', $userId)->first();
 
             if (!$detail) {
                 return $this->fail('User details not found.', self::NOT_FOUND);
@@ -156,21 +162,15 @@ class UserDetailController extends Controller
     }
 
     // ═════════════════════════════════════════════════════
-    // 3. GET ALL USER DETAILS
-    // GET /api/UserDetail/get_all_userDetails
-    //   ?created_by=X        (optional filter)
-    //   ?only_mine=1         (optional — filter by auth user's created users)
-    //   ?search=name         (optional — full_name / contact / nid)
+    // 3. GET ALL
     // ═════════════════════════════════════════════════════
     public function getAll(Request $request)
     {
         try {
             $authUser = $request->user();
 
-            $query = UserDetail::with('user')
-                ->orderBy('full_name');
+            $query = UserDetail::with('user')->orderBy('full_name');
 
-            // Filter: only_mine → details of users created by the caller
             if ($request->boolean('only_mine')) {
                 $createdUserIds = User::where('created_by', $authUser->id)
                     ->pluck('id')
@@ -186,7 +186,6 @@ class UserDetailController extends Controller
                 $query->whereIn('user_id', $createdUserIds);
             }
 
-            // Optional search
             if ($request->filled('search')) {
                 $term = '%' . $request->input('search') . '%';
                 $query->where(function ($q) use ($term) {
@@ -205,17 +204,8 @@ class UserDetailController extends Controller
     }
 
     // ═════════════════════════════════════════════════════
-    // 4. UPDATE USER DETAILS
+    // 4. UPDATE
     // PUT /api/UserDetail/update_userDetails
-    //
-    // Body (all optional — only sent fields update):
-    //   id                    (required) — user_details.id
-    //   image                 (file, optional)
-    //   full_name, contact, present_address, permanent_address,
-    //   father_name, mother_name, date_of_birth, marital_status,
-    //   spouse_name, nid_number, gender, birth_number, religion,
-    //   nationality, blood_group, joining_date, resignation_date,
-    //   emergency_contact_* 
     // ═════════════════════════════════════════════════════
     public function update(Request $request)
     {
@@ -232,36 +222,28 @@ class UserDetailController extends Controller
                 return $this->fail('User details not found.', self::NOT_FOUND);
             }
 
-            // Ownership check — unless super admin
-            if (!$authUser->hasRole('super_admin')) {
-                $owns = User::where('id', $detail->user_id)
-                    ->where('created_by', $authUser->id)
-                    ->exists();
-
-                if (!$owns) {
-                    return $this->fail(
-                        'You can only update details for users you created.',
-                        self::FORBIDDEN
-                    );
-                }
+            if (!$this->canManage($authUser, $detail)) {
+                return $this->fail(
+                    'You can only update your own details or those of users you created.',
+                    self::FORBIDDEN
+                );
             }
 
-            // ─── Validate ────────────────────────────────
             $v = Validator::make($request->all(), [
                 'full_name'                  => 'sometimes|string|max:150',
-                'contact'                    => 'sometimes|string|max:20',
-                'present_address'            => 'sometimes|string',
-                'permanent_address'          => 'sometimes|string',
-                'father_name'                => 'sometimes|string|max:150',
-                'mother_name'                => 'sometimes|string|max:150',
-                'date_of_birth'              => 'sometimes|date',
-                'marital_status'             => 'sometimes|string|max:30',
+                'contact'                    => 'sometimes|nullable|string|max:20',
+                'present_address'            => 'sometimes|nullable|string',
+                'permanent_address'          => 'sometimes|nullable|string',
+                'father_name'                => 'sometimes|nullable|string|max:150',
+                'mother_name'                => 'sometimes|nullable|string|max:150',
+                'date_of_birth'              => 'sometimes|nullable|date',
+                'marital_status'             => 'sometimes|nullable|string|max:30',
                 'spouse_name'                => 'nullable|string|max:150',
                 'nid_number'                 => 'nullable|string|max:30',
-                'gender'                     => 'sometimes|string|max:20',
+                'gender'                     => 'sometimes|nullable|string|max:20',
                 'birth_number'               => 'nullable|string|max:30',
                 'religion'                   => 'nullable|string|max:50',
-                'nationality'                => 'sometimes|string|max:50',
+                'nationality'                => 'sometimes|nullable|string|max:50',
                 'blood_group'                => 'nullable|string|max:5',
                 'joining_date'               => 'nullable|date',
                 'resignation_date'           => 'nullable|date',
@@ -278,32 +260,28 @@ class UserDetailController extends Controller
 
             $data = $v->validated();
 
-            // ─── Handle image upload ─────────────────────
             if ($request->hasFile('image')) {
-                // Delete old image
                 if ($detail->image && Storage::disk('public')->exists($detail->image)) {
                     Storage::disk('public')->delete($detail->image);
                 }
-
-                $path = $request->file('image')->store('user_details', 'public');
-                $data['image'] = $path;
+                $data['image'] = $request->file('image')->store('user_details', 'public');
             }
 
-            // Never allow overriding user_id or created_by through this endpoint
             unset($data['user_id'], $data['created_by']);
 
             $detail->update($data);
 
-            return $this->ok('User details updated successfully.', $this->toApiArray($detail->fresh('user')));
+            return $this->ok(
+                'User details updated successfully.',
+                $this->toApiArray($detail->fresh('user'))
+            );
         } catch (\Throwable $e) {
             return $this->fail($e->getMessage());
         }
     }
 
     // ═════════════════════════════════════════════════════
-    // 5. DELETE USER DETAILS
-    // DELETE /api/UserDetail/delete_userDetails
-    // Body: { id }  OR query: ?id=X
+    // 5. DELETE
     // ═════════════════════════════════════════════════════
     public function delete(Request $request)
     {
@@ -325,41 +303,33 @@ class UserDetailController extends Controller
                 return $this->fail('User details not found.', self::NOT_FOUND);
             }
 
-            // Ownership check — unless super admin
-            if (!$authUser->hasRole('super_admin')) {
-                $owns = User::where('id', $detail->user_id)
-                    ->where('created_by', $authUser->id)
-                    ->exists();
-
-                if (!$owns) {
-                    return $this->fail(
-                        'You can only delete details for users you created.',
-                        self::FORBIDDEN
-                    );
-                }
+            if (!$this->canManage($authUser, $detail)) {
+                return $this->fail(
+                    'You can only delete your own details or those of users you created.',
+                    self::FORBIDDEN
+                );
             }
 
-            // Delete image from disk first
             if ($detail->image && Storage::disk('public')->exists($detail->image)) {
                 Storage::disk('public')->delete($detail->image);
             }
 
             $detail->delete();
 
-            return $this->ok('User details deleted successfully.', [
-                'id' => $id,
-            ]);
+            return $this->ok('User details deleted successfully.', ['id' => $id]);
         } catch (\Throwable $e) {
             return $this->fail($e->getMessage());
         }
     }
-        // ═════════════════════════════════════════════════════
-    // 6. CREATE OR UPSERT USER DETAILS (self-service)
+
+    // ═════════════════════════════════════════════════════
+    // 6. CREATE OR UPSERT (self-service)
     // POST /api/UserDetail/save_userDetails
     //
-    // Creates a UserDetail row for the authenticated user
-    // if one doesn't exist; otherwise updates it.
-    // The user_id is always the caller's own id — never trusted from input.
+    // Rules:
+    //   • On first create → full_name is required.
+    //   • On update       → partial save allowed.
+    //   • user_id is always the caller's own id (never trusted from input).
     // ═════════════════════════════════════════════════════
     public function save(Request $request)
     {
@@ -369,33 +339,34 @@ class UserDetailController extends Controller
                 return $this->fail('Unauthenticated.', self::FORBIDDEN);
             }
 
-            // Find or start a new row for the caller
             $detail = UserDetail::where('user_id', $authUser->id)->first();
             $isNew  = false;
 
             if (!$detail) {
                 $detail = new UserDetail();
-                $detail->user_id   = $authUser->id;
+                $detail->user_id    = $authUser->id;
                 $detail->created_by = $authUser->id;
                 $isNew = true;
             }
 
-            // ─── Validation ──────────────────────────────
-            // On first create, a few fields are required.
-            // On update, everything is optional (partial update).
-            $requiredRule = $isNew ? 'required' : 'sometimes';
+            // Only require full_name when a new record is being created AND
+            // the request is actually trying to save Step 1 (i.e. full_name present).
+            // The frontend prevents saving any step before Step 1 for a new profile,
+            // so this is a safety net.
+            $fullNameRule = $isNew ? 'required|string|max:150' : 'sometimes|string|max:150';
 
             $v = Validator::make($request->all(), [
-                'full_name'                  => "{$requiredRule}|string|max:150",
-                'contact'                    => "{$requiredRule}|string|max:20",
-                'present_address'            => "{$requiredRule}|string",
-                'permanent_address'          => "{$requiredRule}|string",
-                'father_name'                => "{$requiredRule}|string|max:150",
-                'mother_name'                => "{$requiredRule}|string|max:150",
-                'date_of_birth'              => "{$requiredRule}|date",
-                'marital_status'             => "{$requiredRule}|string|max:30",
-                'gender'                     => "{$requiredRule}|string|max:20",
-                'nationality'                => "{$requiredRule}|string|max:50",
+                'full_name'                  => $fullNameRule,
+
+                'contact'                    => 'nullable|string|max:20',
+                'present_address'            => 'nullable|string',
+                'permanent_address'          => 'nullable|string',
+                'father_name'                => 'nullable|string|max:150',
+                'mother_name'                => 'nullable|string|max:150',
+                'date_of_birth'              => 'nullable|date',
+                'marital_status'             => 'nullable|string|max:30',
+                'gender'                     => 'nullable|string|max:20',
+                'nationality'                => 'nullable|string|max:50',
                 'spouse_name'                => 'nullable|string|max:150',
                 'nid_number'                 => 'nullable|string|max:30',
                 'birth_number'               => 'nullable|string|max:30',
@@ -416,10 +387,8 @@ class UserDetailController extends Controller
 
             $data = $v->validated();
 
-            // Never let the client set these
             unset($data['user_id'], $data['created_by']);
 
-            // Handle image upload
             if ($request->hasFile('image')) {
                 if ($detail->image && Storage::disk('public')->exists($detail->image)) {
                     Storage::disk('public')->delete($detail->image);
