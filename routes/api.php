@@ -9,6 +9,11 @@ use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\MenuAllocationController;
 use App\Http\Controllers\Api\UserTypeController;
 use App\Http\Controllers\Api\UserDetailController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\UnitController;
+use App\Http\Controllers\Api\AttributeController;
+use App\Http\Controllers\Api\AttributeValueController;
 
 // Public
 Route::prefix('auth')->group(function () {
@@ -86,5 +91,46 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match (['put', 'post'], '/update_userDetails', [UserDetailController::class, 'update']);
         Route::delete('/delete_userDetails',                [UserDetailController::class, 'delete']);
         Route::post  ('/save_userDetails',                  [UserDetailController::class, 'save']);
+    });
+
+    Route::prefix('Category')->group(function () {
+        Route::get   ('/get_all',         [CategoryController::class, 'getAll']);
+        Route::get   ('/get_by_company',  [CategoryController::class, 'getByCompany']);
+        Route::get   ('/get_by_id',       [CategoryController::class, 'getById']);
+        Route::post  ('/save',            [CategoryController::class, 'save']);
+        Route::match (['put', 'post'], '/update', [CategoryController::class, 'update']);
+        Route::delete('/delete',          [CategoryController::class, 'delete']);
+    });
+
+    Route::prefix('Brand')->group(function () {
+        Route::get   ('/get_all',         [BrandController::class, 'getAll']);
+        Route::get   ('/get_by_category', [BrandController::class, 'getByCategory']);
+        Route::get   ('/get_by_company',  [BrandController::class, 'getByCompany']);
+        Route::get   ('/get_by_id',       [BrandController::class, 'getById']);
+        Route::post  ('/save',            [BrandController::class, 'save']);
+        Route::match (['put', 'post'], '/update', [BrandController::class, 'update']);
+        Route::delete('/delete',          [BrandController::class, 'delete']);
+    });
+
+    Route::prefix('Unit')->group(function () {
+        Route::get   ('/get_all',         [UnitController::class, 'getAll']);
+        Route::get   ('/get_by_id',       [UnitController::class, 'getById']);
+        Route::post  ('/save',            [UnitController::class, 'save']);
+        Route::match (['put', 'post'], '/update', [UnitController::class, 'update']);
+        Route::delete('/delete',          [UnitController::class, 'delete']);
+    });
+    Route::prefix('Attribute')->group(function () {
+        Route::get   ('/get_all',    [AttributeController::class, 'getAll']);
+        Route::get   ('/get_by_id',  [AttributeController::class, 'getById']);
+        Route::post  ('/save',       [AttributeController::class, 'save']);
+        Route::put   ('/update',     [AttributeController::class, 'update']);
+        Route::delete('/delete',     [AttributeController::class, 'delete']);
+    });
+
+    Route::prefix('AttributeValue')->group(function () {
+        Route::get   ('/get_by_attribute', [AttributeValueController::class, 'getByAttribute']);
+        Route::post  ('/save',             [AttributeValueController::class, 'save']);
+        Route::put   ('/update',           [AttributeValueController::class, 'update']);
+        Route::delete('/delete',           [AttributeValueController::class, 'delete']);
     });
 });
