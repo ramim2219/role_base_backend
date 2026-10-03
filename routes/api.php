@@ -14,6 +14,14 @@ use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\UnitController;
 use App\Http\Controllers\Api\AttributeController;
 use App\Http\Controllers\Api\AttributeValueController;
+use App\Http\Controllers\Api\ProductTypeController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\BarcodeController;
+use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\ProductSupplierController;
+use App\Http\Controllers\Api\WarehouseController;
+use App\Http\Controllers\Api\StockController;
+use App\Http\Controllers\Api\StockMovementController;
 
 // Public
 Route::prefix('auth')->group(function () {
@@ -132,5 +140,71 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post  ('/save',             [AttributeValueController::class, 'save']);
         Route::put   ('/update',           [AttributeValueController::class, 'update']);
         Route::delete('/delete',           [AttributeValueController::class, 'delete']);
+    });
+    Route::prefix('ProductType')->group(function () {
+        Route::get   ('/get_all',   [ProductTypeController::class, 'getAll']);
+        Route::get   ('/get_by_id', [ProductTypeController::class, 'getById']);
+        Route::post  ('/save',      [ProductTypeController::class, 'save']);
+        Route::put   ('/update',    [ProductTypeController::class, 'update']);
+        Route::delete('/delete',    [ProductTypeController::class, 'delete']);
+    });
+
+    Route::prefix('Product')->group(function () {
+        Route::get   ('/get_all',   [ProductController::class, 'getAll']);
+        Route::get   ('/get_by_id', [ProductController::class, 'getById']);
+        Route::post  ('/save',      [ProductController::class, 'save']);
+        Route::match (['put', 'post'], '/update', [ProductController::class, 'update']);
+        Route::delete('/delete',    [ProductController::class, 'delete']);
+    });
+
+    Route::prefix('Barcode')->group(function () {
+        Route::get   ('/get_all',   [BarcodeController::class, 'getAll']);
+        Route::get   ('/get_by_id', [BarcodeController::class, 'getById']);
+        Route::post  ('/save',      [BarcodeController::class, 'save']);
+        Route::put   ('/update',    [BarcodeController::class, 'update']);
+        Route::delete('/delete',    [BarcodeController::class, 'delete']);
+    });
+
+    // ─── Suppliers ───
+    Route::prefix('Supplier')->group(function () {
+        Route::get   ('/get_all',   [SupplierController::class, 'getAll']);
+        Route::get   ('/get_by_id', [SupplierController::class, 'getById']);
+        Route::post  ('/save',      [SupplierController::class, 'save']);
+        Route::put   ('/update',    [SupplierController::class, 'update']);
+        Route::delete('/delete',    [SupplierController::class, 'delete']);
+    });
+
+    // ─── Product ↔ Supplier links ───
+    Route::prefix('ProductSupplier')->group(function () {
+        Route::get   ('/get_all',   [ProductSupplierController::class, 'getAll']);
+        Route::post  ('/save',      [ProductSupplierController::class, 'save']);
+        Route::put   ('/update',    [ProductSupplierController::class, 'update']);
+        Route::delete('/delete',    [ProductSupplierController::class, 'delete']);
+    });
+
+    // ─── Warehouses ───
+    Route::prefix('Warehouse')->group(function () {
+        Route::get   ('/get_all',   [WarehouseController::class, 'getAll']);
+        Route::get   ('/get_by_id', [WarehouseController::class, 'getById']);
+        Route::post  ('/save',      [WarehouseController::class, 'save']);
+        Route::put   ('/update',    [WarehouseController::class, 'update']);
+        Route::delete('/delete',    [WarehouseController::class, 'delete']);
+    });
+
+    // ─── Stocks ───
+    Route::prefix('Stock')->group(function () {
+        Route::get   ('/get_all',         [StockController::class, 'getAll']);
+        Route::get   ('/get_by_id',       [StockController::class, 'getById']);
+        Route::get   ('/get_by_product',  [StockController::class, 'getByProduct']);
+        Route::post  ('/save',            [StockController::class, 'save']);
+        Route::post  ('/adjust',          [StockController::class, 'adjust']);
+        Route::put   ('/update_reorder',  [StockController::class, 'updateReorder']);
+    });
+
+    // ─── Stock Movements ───
+    Route::prefix('StockMovement')->group(function () {
+        Route::get   ('/get_all',   [StockMovementController::class, 'getAll']);
+        Route::get   ('/get_by_id', [StockMovementController::class, 'getById']);
+        Route::get   ('/trace',     [StockMovementController::class, 'trace']);
     });
 });
